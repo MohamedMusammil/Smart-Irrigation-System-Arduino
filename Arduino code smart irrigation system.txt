@@ -1,0 +1,141 @@
+#include <Keypad.h>
+#include <Servo.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+/* -------- FUNCTION DECLARATIONS -------- */
+void unlockGate();
+void lockGate();
+void showEnterMsg();
+
+/* ------------------ LM35 ------------------ */
+#define LM35_PIN A0   // LM35 output connected to A0
+
+/* ------------------ Servo -------------------- */
+#define SERVO_PIN 10
+Servo gateServo;
+
+/* ------------------ LCD ---------------------- */
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+/* ------------------ 4x3 Keypad ---------------- */
+const byte ROWS = 4;
+const byte COLS = 3;
+
+char keys[ROWS][COLS] = {
+  {'1','2','3'},
+  {'4','5','6'},
+  {'7','8','9'},
+  {'*','0','#'}
+};
+
+byte rowPins[ROWS] = {8, 7, 6, 5};
+byte colPins[COLS] = {4, 3, 2};
+
+Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
+
+/* ------------------ Variables ---------------- */
+String enteredPassword = "";
+const String correctPassword = "8";   // Example password
+
+bool gateOpen = false;
+unsigned long gateTimer = 0;
+const unsigned long GATE_OPEN_TIME = 10000; // 10 seconds
+
+/* ------------------ SETUP -------------------- */
+void setup() {
+  gateServo.attach(SERVO_PIN);
+  gateServo.write(0); // Gate CLOSED
+
+  lcd.init();
+  lcd.backlight();
+
+  showEnterMsg();
+}
+
+/* ------------------ LOOP --------------------- */
+void loop() {
+
+  char key = keypad.getKey();
+
+  if (key) {
+
+    // Accept digits only
+    if (key >= '0' && key <= '9') {
+      if (enteredPassword.length() < 4) {
+        enteredPassword += key;
+        lcd.setCursor(0, 1);
+        lcd.print("                ");
+        lcd.setCursor(0, 1);
+        lcd.print(enteredPassword);
+      }
+    }
+
+    // ENTER key (#)
+    else if (key == '#') {
+
+      if (enteredPassword == correctPassword) {
+        unlockGate();
+      } else {
+        lcd.clear();
+        lcd.print("Wrong Password");
+        delay(2000);
+        showEnterMsg();
+      }
+
+      enteredPassword = "";
+    }
+
+    // CLEAR key (*)
+    else if (key == '*') {
+      enteredPassword = "";
+      showEnterMsg();
+    }
+  }
+
+  // Auto-close gate after 10 seconds
+  if (gateOpen && millis() - gateTimer >= GATE_OPEN_TIME) {
+    lockGate();
+  }
+
+  // Show LM35 temperature when gate is locked
+  if (!gateOpen) {
+    int sensorValue = analogRead(LM35_PIN);
+    float voltage = sensorValue * (5.0 / 1023.0);
+    float temperatureC = voltage * 100.0; // LM35 formula
+
+    lcd.setCursor(0, 1);
+    lcd.print("Temp: ");
+    lcd.print(temperatureC);
+    lcd.print(" C   ");
+
+    delay(500);
+  }
+}
+
+/* ------------------ FUNCTIONS ---------------- */
+
+void unlockGate() {
+  gateServo.write(90); // OPEN
+  gateOpen = true;
+  gateTimer = millis();
+
+  lcd.clear();
+  lcd.print("Gate Unlocked");
+}
+
+void lockGate() {
+  gateServo.write(0); // CLOSE
+  gateOpen = false;
+
+  lcd.clear();
+  lcd.print("Gate Locked");
+  delay(2000);
+  showEnterMsg();
+}
+
+void showEnterMsg() {
+  lcd.clear();
+  lcd.print("Enter Password");
+  lcd.setCursor(0, 1);
+}
